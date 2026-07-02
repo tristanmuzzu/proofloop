@@ -1,7 +1,7 @@
 {
   "name": "proofloop",
-  "description": "Claim-vs-reality verification for deployed changes. Fires real stimuli at the LIVE system, audits independent evidence surfaces (DB rows, API state, logs), and returns a binary PASS/FAIL verdict per claim - because a system's own reply is a claim, not evidence.",
-  "version": "0.4.0",
+  "description": "Claim-vs-reality verification for deployed changes. Scout derives WHAT to test from the diff; a zero-dep runner fires real stimuli and captures evidence (shell + browser/vision); a fresh-context judge rules PASS/FAIL per claim - because a system's own reply is a claim, not evidence.",
+  "version": "0.5.0",
   "author": {
     "name": "tristanmuzzu",
     "url": "https://github.com/tristanmuzzu"

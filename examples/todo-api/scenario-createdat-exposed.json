@@ -1,0 +1,17 @@
+{
+  "_scouted_from": "diff adding createdAt to the todo write path (examples of proofloop-scout output)",
+  "claim": "todos created through the API include a createdAt timestamp, visible in reads",
+  "stimulus": {
+    "name": "create_todo",
+    "inputs": { "input": "scout demo todo" }
+  },
+  "settle": { "evidence": "api_state", "expect": "{tag}" },
+  "expect": [
+    { "evidence": "api_state", "contains": "{tag}" },
+    { "evidence": "api_state", "contains": "\"createdAt\"" },
+    { "evidence": "server_log", "contains": "persisted #" }
+  ],
+  "absent": [
+    { "evidence": "server_log", "contains": "LIED" }
+  ]
+}

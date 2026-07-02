@@ -98,9 +98,15 @@ STALE-UI RUN:  settled: true  |  api_state: found  |  ui_state: NOT found
 
 Reply said ok. The API shows the todo. The user stares at "0 todo(s)". Every log-based verification on earth passes this deploy; the screenshot fails it in one glance. Pixel-judging rules (when pixels are primary evidence vs. when they must be paired with a state surface) are in the skill.
 
+## The brain: scout mode (v0.5)
+
+The runner answers "did it really happen?" — **scout answers "what should we even test?"** Given a deployed diff, the `proofloop-scout` skill classifies every hunk by shape (new endpoint, new field in a write path, changed branch, bug fix, removed behavior…), derives one-sentence observable claims from a claim-template table, discovers stimuli and evidence surfaces from the repo itself (log lines *added in the diff* are gift-wrapped evidence needles), runs a gap analysis against your existing `verify.yaml`, and emits paste-ready config proposals plus scenario files — each proposed stimulus labeled with its blast radius.
+
+Scout is **read-only by contract**: it never fires a stimulus. The human reviews and accepts; the runner executes; a fresh judge rules. Dogfooded on this repo: a diff adding `createdAt` to the demo's write path was scouted into a scenario (`examples/todo-api/scenario-createdat-exposed.json`) that the runner then verified green against the live server — diff to verified claim, no hand-written test.
+
 ## Status and roadmap
 
-v0.4 — the runner (v0.3) plus browser/vision evidence. The mechanical half is now owned by a **zero-dependency runner CLI** (`bin/proofloop-runner.mjs`): charset-enforced substitution, liveness probe, baseline reads with debris/collision abort, stimulus execution, outcome-polling against evidence (not blind sleeps), verbatim evidence capture, mechanical contains/absent checks with quoted matching lines, and cleanup with a verified sweep — all recorded to `.proofloop/runs/<run_id>/record.json`. The model writes the scenario and judges the record; code does everything models fumble. The runner never judges — by design.
+v0.5 — the runner (v0.3), browser/vision evidence (v0.4), and scout (v0.5). The mechanical half is now owned by a **zero-dependency runner CLI** (`bin/proofloop-runner.mjs`): charset-enforced substitution, liveness probe, baseline reads with debris/collision abort, stimulus execution, outcome-polling against evidence (not blind sleeps), verbatim evidence capture, mechanical contains/absent checks with quoted matching lines, and cleanup with a verified sweep — all recorded to `.proofloop/runs/<run_id>/record.json`. The model writes the scenario and judges the record; code does everything models fumble. The runner never judges — by design.
 
 Both the runner and the earlier prompt-orchestrated loop have been dogfooded end-to-end against the demo in both modes (the verdicts above are captured, not typed). The runner's first live run immediately demonstrated why judges must read `matching_lines` rather than trust `found` booleans: the needle `"persisted"` substring-matched the liar's own `"(nothing persisted)"` log line.
 

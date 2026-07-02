@@ -55,9 +55,9 @@ createServer(async (req, res) => {
       log(`POST /todos LIED ok for "${title}" (nothing persisted)`);
       return json(res, 201, { ok: true, id: nextId, title }); // claim without reality
     }
-    const todo = { id: nextId++, title, done: false };
+    const todo = { id: nextId++, title, done: false, createdAt: new Date().toISOString() };
     todos.push(todo);
-    log(`POST /todos persisted #${todo.id} "${title}"`);
+    log(`POST /todos persisted #${todo.id} "${title}" at ${todo.createdAt}`);
     return json(res, 201, { ok: true, ...todo });
   }
 
