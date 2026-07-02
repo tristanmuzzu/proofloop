@@ -86,13 +86,25 @@ Then copy `verify.example.yaml` to your repo root as `verify.yaml` and adapt the
 - Destructive/irreversible stimuli require explicit user confirmation.
 - Works against real production systems when your evidence surfaces are read-only and your stimuli are user-grade actions — that's the environment the pattern was developed in.
 
+## The eyes: browser + vision evidence (v0.4)
+
+A web UI is just another evidence surface. `bin/proofloop-browser.mjs` (playwright-core + your system Chrome — no browser download) captures **text truth** (full page text, greppable by the runner's checks and settle-polling) and **pixel truth** (a full-page screenshot listed in the run record's `artifacts` for a vision-capable judge).
+
+The demo server's second lie mode shows why this surface earns its keep. With `STALE_UI=1`, the API and the data are completely honest — but the web page renders a snapshot frozen at boot:
+
+```
+STALE-UI RUN:  settled: true  |  api_state: found  |  ui_state: NOT found
+```
+
+Reply said ok. The API shows the todo. The user stares at "0 todo(s)". Every log-based verification on earth passes this deploy; the screenshot fails it in one glance. Pixel-judging rules (when pixels are primary evidence vs. when they must be paired with a state surface) are in the skill.
+
 ## Status and roadmap
 
-v0.3. The mechanical half is now owned by a **zero-dependency runner CLI** (`bin/proofloop-runner.mjs`): charset-enforced substitution, liveness probe, baseline reads with debris/collision abort, stimulus execution, outcome-polling against evidence (not blind sleeps), verbatim evidence capture, mechanical contains/absent checks with quoted matching lines, and cleanup with a verified sweep — all recorded to `.proofloop/runs/<run_id>/record.json`. The model writes the scenario and judges the record; code does everything models fumble. The runner never judges — by design.
+v0.4 — the runner (v0.3) plus browser/vision evidence. The mechanical half is now owned by a **zero-dependency runner CLI** (`bin/proofloop-runner.mjs`): charset-enforced substitution, liveness probe, baseline reads with debris/collision abort, stimulus execution, outcome-polling against evidence (not blind sleeps), verbatim evidence capture, mechanical contains/absent checks with quoted matching lines, and cleanup with a verified sweep — all recorded to `.proofloop/runs/<run_id>/record.json`. The model writes the scenario and judges the record; code does everything models fumble. The runner never judges — by design.
 
 Both the runner and the earlier prompt-orchestrated loop have been dogfooded end-to-end against the demo in both modes (the verdicts above are captured, not typed). The runner's first live run immediately demonstrated why judges must read `matching_lines` rather than trust `found` booleans: the needle `"persisted"` substring-matched the liar's own `"(nothing persisted)"` log line.
 
-Roadmap: browser/vision evidence surfaces via Playwright (catch honest-API-but-stale-UI), a scout mode that derives claims and proposes verify.yaml entries from the deployed diff, and a "liar's gym" — a regression suite of deliberately deceptive demo servers that every proofloop change must still catch. Adapter recipes for common stacks (Postgres, Telegram bots, queues) are the other obvious contribution surface.
+Roadmap: a scout mode that derives claims and proposes verify.yaml entries from the deployed diff, and a "liar's gym" — a regression suite of deliberately deceptive demo servers (the two current lie modes are its first two residents) that every proofloop change must still catch. Adapter recipes for common stacks (Postgres, Telegram bots, queues) are the other obvious contribution surface.
 
 ## Origin
 

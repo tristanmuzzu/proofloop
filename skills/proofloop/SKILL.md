@@ -57,6 +57,25 @@ It writes verbatim evidence files plus `record.json` into `.proofloop/runs/<run_
 
 When Node is unavailable, fall back to executing steps 3–5 below manually under the same contract.
 
+## Browser evidence — the eyes (pixel + text truth)
+
+A web UI is an evidence surface like any other, captured via `bin/proofloop-browser.mjs` (needs `npm i playwright-core` and a system Chrome/Edge). Declare it as a normal evidence command:
+
+```yaml
+evidence:
+  ui_state:
+    run: 'node <plugin>/bin/proofloop-browser.mjs http://localhost:3000/ --screenshot .proofloop/runs/{run_id}/ui.png'
+```
+
+Its stdout is the page's **text truth** (title, url, full body text) — so settle-polling and contains/absent checks work on UI content unchanged. The screenshot is the **pixel truth**, listed under `artifacts` in the run record for a vision-capable judge to open and inspect.
+
+**Pixel-judging rules:**
+
+- Pixels are *primary* evidence only for presentation claims ("the banner is gone", "the chart renders", "the list shows the item").
+- For persistence/state claims, a screenshot must be *paired* with a state surface (DB/API) — a UI can render a lie from cache in both directions: stale-empty over honest data, or stale-full over deleted data.
+- The disagreement signature `api_state: found` + `ui_state: not found` is the honest-backend-lying-frontend class — cite both surfaces plus the screenshot in the verdict.
+- When judging from a screenshot, describe what is visibly present/absent in the verdict's evidence list (e.g. `ui.png: page shows 'Todos' heading and '0 todo(s)', no list items`), so the verdict stands without the reader opening the image.
+
 ## The loop
 
 ### 1. Scope — what changed, what is claimed

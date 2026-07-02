@@ -25,6 +25,9 @@ evidence:
   server_log:
     run: "tail -30 server.log"
     note: "what the server says it actually did"
+  ui_state:
+    run: 'node ../../bin/proofloop-browser.mjs http://localhost:3000/ --screenshot .proofloop/runs/{run_id}/ui.png'
+    note: "what the user actually SEES: text truth on stdout, pixel truth in ui.png (needs npm i playwright-core + system Chrome)"
 
 cleanup:
   - run: 'curl -s -X DELETE "localhost:3000/todos?tag={tag}"'

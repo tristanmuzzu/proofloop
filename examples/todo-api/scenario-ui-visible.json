@@ -1,0 +1,13 @@
+{
+  "claim": "a created todo is visible to the user in the web UI",
+  "stimulus": {
+    "name": "create_todo",
+    "inputs": { "input": "ui visibility todo" }
+  },
+  "settle": { "evidence": "api_state", "expect": "{tag}" },
+  "expect": [
+    { "evidence": "api_state", "contains": "{tag}" },
+    { "evidence": "ui_state", "contains": "{tag}" }
+  ],
+  "absent": []
+}

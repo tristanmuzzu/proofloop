@@ -16,7 +16,7 @@
 // Zero dependencies. Node 18+.
 
 import { execSync } from "node:child_process";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 
 // ---------- minimal YAML subset parser (the verify.yaml schema only) ----------
@@ -296,6 +296,9 @@ function main() {
   }
 
   record.finished_at = new Date().toISOString();
+  // non-text artifacts dropped into the run dir by evidence commands
+  // (e.g. screenshots) - surfaced for vision-capable judges
+  record.artifacts = readdirSync(runDir).filter((f) => !f.endsWith(".txt") && f !== "record.json");
   save("record.json", JSON.stringify(record, null, 2));
   console.log(JSON.stringify({
     run_id: runId, tag, run_dir: runDir,
