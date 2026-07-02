@@ -1,10 +1,15 @@
 # proofloop config for the demo todo API (examples/todo-api/server.mjs)
-# Start the server first:  node server.mjs > server.log
+# Start the server first (from this directory):
+#   node server.mjs > server.log 2>&1 &
+#   echo $! > server.pid          # stop later with: kill $(cat server.pid)
+# All run: commands execute from this file's directory (see SKILL.md contract).
+# NOTE: the demo server's cleanup deletes by SUBSTRING match on the tag —
+# run_ids must be collision-safe (no run_id a prefix of another).
 tag: "proofloop-{run_id}"
 
 settle:
   timeout_seconds: 10
-  poll: "curl -s localhost:3000/health"
+  poll: "curl -s localhost:3000/health"   # liveness only; settle on api_state
 
 stimuli:
   create_todo:

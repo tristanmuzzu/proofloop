@@ -21,46 +21,53 @@ You declare, in one `verify.yaml`, three things about your system:
 ```yaml
 stimuli:    # how to poke it   (HTTP calls, CLI commands, message sends...)
 evidence:   # how to observe REAL state  (SQL, API reads, log greps...)
-cleanup:    # how to remove tagged test entities
+cleanup:    # how to remove tagged test entities, + a verify read
 ```
 
-Then, after deploying a change:
+Then, after deploying a change, a **fresh-context verifier agent** (it didn't build the change, so it isn't grading its own homework) runs the loop:
 
-1. **Scope** — proofloop derives testable *claims* from the diff/intent.
+1. **Scope** — derive testable *claims* from the diff/intent.
 2. **Smallest sufficient scenarios** — 1–3 (max 7). A spot-weld, not a test suite.
-3. **Execute** — fire stimuli with tagged, obviously-synthetic inputs.
-4. **Judge** — a **fresh-context verifier agent** (it didn't build the change, so it isn't grading its own homework) compares each claim against verbatim evidence quotes. Missing evidence = FAIL, not pass.
+3. **Baseline-read, stimulate, settle, collect** — tagged synthetic inputs; evidence captured verbatim from every declared surface.
+4. **Judge** — binary PASS/FAIL per claim. Missing evidence = FAIL, not pass. The stimulus reply lives in a `reply` field — never in `evidence`.
 5. **Cleanup** — tagged entities swept, sweep verified, leftovers reported.
 6. **Verdict** — structured JSON; `allPassed: true` is the only "done".
 
-## Try it in 2 minutes — watch it catch a liar
+## Watch it catch a liar (verdicts below are captured from a real run)
 
 The demo todo API has a `LIE_MODE`: it returns `201 {"ok": true}` on create **without persisting anything**.
 
 ```bash
 cd examples/todo-api
-LIE_MODE=1 node server.mjs > server.log &
+LIE_MODE=1 node server.mjs > server.log 2>&1 &
+echo $! > server.pid            # stop later with: kill $(cat server.pid)
 ```
 
 Then in Claude Code:
 
 > Use proofloop with examples/todo-api/verify.yaml to verify: "creating a todo through the API persists it".
 
-The stimulus succeeds (the reply says ok!), the `api_state` evidence shows an empty list, and the verdict comes back:
+Captured verdict (run 1, LIE_MODE on):
 
 ```json
 {
   "allPassed": false,
   "scenarios": [{
     "claim": "creating a todo through the API persists it",
+    "stimulus": {"name": "create_todo", "inputs": {"input": "synthetic demo todo"}},
+    "reply": "{\"ok\":true,\"id\":1,\"title\":\"synthetic demo todo [proofloop-r1-20260702]\"}",
     "verdict": "FAIL",
-    "evidence": ["stimulus reply: {\"ok\":true,\"id\":1,...}", "api_state: []"],
-    "reason": "API claimed success but the todo is absent from the read API."
-  }]
+    "evidence": [
+      "api_state: []",
+      "server_log: [2026-07-02T14:56:18.778Z] POST /todos LIED ok for \"synthetic demo todo [proofloop-r1-20260702]\" (nothing persisted)"
+    ],
+    "reason": "The API replied 201 ok but the tagged todo never appeared in the read API within the settle budget, and the server log records nothing was persisted."
+  }],
+  "cleanup": "clean"
 }
 ```
 
-Restart without `LIE_MODE` and the same run passes. That delta — reply unchanged, verdict flipped — is the whole point.
+Restarted without `LIE_MODE`, same prompt, run 2: the stimulus reply was **byte-for-byte identical** — and the verdict flipped to `PASS` on the evidence (`api_state` shows the tagged todo, `server_log` shows the persist). That delta — reply unchanged, verdict flipped — is the whole point.
 
 ## Install
 
@@ -69,14 +76,19 @@ Restart without `LIE_MODE` and the same run passes. That delta — reply unchang
 /plugin install proofloop@proofloop
 ```
 
-Then copy `verify.example.yaml` to your repo root as `verify.yaml` and adapt the three vocabularies to your stack (Postgres, REST, message queues, log files — anything you can reach from a shell command).
+Then copy `verify.example.yaml` to your repo root as `verify.yaml` and adapt the three vocabularies to your stack (Postgres, REST, message queues, log files — anything you can reach from a shell command). The execution contract (cwd, run_id rules, placeholder escaping) is documented in the skill and the example file.
 
 ## Safety by design
 
-- Every test entity carries a run tag; proofloop never touches entities it didn't create.
-- Only stimuli declared in `verify.yaml` are ever fired — no improvisation against live systems.
+- Every test entity carries a run tag; a baseline read before each stimulus makes "never touch entities you didn't create" checkable, not aspirational.
+- Only stimuli declared in `verify.yaml` are ever fired, and declared commands are never edited beyond placeholder substitution — a broken command is reported as a config defect, not quietly fixed.
+- Placeholder values are restricted to `[a-zA-Z0-9 _.-]+` — no shell-escaping games against your own harness.
 - Destructive/irreversible stimuli require explicit user confirmation.
-- Works against real production systems when your evidence surfaces are read-only and your stimuli are user-grade actions — that's the environment it was designed in.
+- Works against real production systems when your evidence surfaces are read-only and your stimuli are user-grade actions — that's the environment the pattern was developed in.
+
+## Status and roadmap
+
+v0.2. The loop is prompt-orchestrated: the skill + verifier agent do everything through your shell. It has been dogfooded end-to-end (the verdicts above are captured, not typed), and the spec incorporates the friction findings from that run. The natural next step, if there's interest, is a small runner CLI that owns the mechanical parts — placeholder substitution, settle-polling, evidence capture, cleanup verification — so the model only designs scenarios and judges. Adapter recipes for common stacks (Postgres, Telegram bots, queues) are the other obvious contribution surface.
 
 ## Origin
 

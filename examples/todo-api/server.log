@@ -1,0 +1,7 @@
+todo-api on :3000 (LIE_MODE=off)
+[2026-07-02T14:58:23.484Z] GET /todos -> 0 items
+[2026-07-02T14:58:23.628Z] POST /todos persisted #1 "synthetic demo todo [proofloop-r2-20260702]"
+[2026-07-02T14:58:32.610Z] GET /todos -> 1 items
+[2026-07-02T14:58:42.701Z] GET /todos -> 1 items
+[2026-07-02T14:58:56.942Z] DELETE /todos?tag=proofloop-r2-20260702 removed 1
+[2026-07-02T14:58:57.087Z] GET /todos -> 0 items

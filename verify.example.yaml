@@ -3,15 +3,22 @@
 # Three vocabularies:
 #   stimuli:  how to poke the LIVE system (anything executable)
 #   evidence: how to observe REAL state afterwards (output = the evidence)
-#   cleanup:  how to remove tagged test entities
+#   cleanup:  how to remove tagged test entities, + a verify read to prove it
 #
-# {tag} is replaced with the run tag; {input}/{id} are scenario-provided values.
+# Execution contract (see SKILL.md for the full version):
+#   - every run: command executes from THIS file's directory
+#   - {run_id} is executor-chosen: lowercase [a-z0-9-], unique, collision-safe
+#     (cleanup may match by substring, so no run_id may be a prefix of another)
+#   - {tag}/{input}/{id} are literal substitutions; values limited to
+#     [a-zA-Z0-9 _.-]+ — anything else makes the scenario un-runnable
 
 tag: "proofloop-{run_id}"          # stamp this on everything a scenario creates
 
 settle:
   timeout_seconds: 30              # max wait for the system to settle per scenario
-  poll: "curl -s localhost:3000/health"   # cheapest liveness probe to poll while waiting
+  poll: "curl -s localhost:3000/health"   # LIVENESS probe only. Outcome-settling is
+                                          # done by polling the scenario's cheapest
+                                          # EVIDENCE source for the expected marker.
 
 stimuli:
   create_todo:
@@ -25,7 +32,7 @@ evidence:
     run: "curl -s localhost:3000/todos"
     note: "source of truth via the read API"
   server_log:
-    run: "tail -50 server.log"
+    run: "tail -50 server.log"     # relative path = relative to this file's directory
     note: "what the server actually did this run"
   # For real systems, evidence sources look like:
   #   db_rows:   run: 'psql "$DB_URL" -c "SELECT id,title,done FROM todos WHERE title LIKE ''%{tag}%''"'
@@ -33,4 +40,6 @@ evidence:
 
 cleanup:
   - run: 'curl -s -X DELETE "localhost:3000/todos?tag={tag}"'
-  - verify: "curl -s localhost:3000/todos"   # judge confirms zero {tag} entities remain
+  - verify: "curl -s localhost:3000/todos"
+    # contract: the {tag} string must not appear anywhere in this command's
+    # output; on systems with real data prefer a tag-scoped query over a dump
