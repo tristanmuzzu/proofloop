@@ -104,9 +104,25 @@ The runner answers "did it really happen?" — **scout answers "what should we e
 
 Scout is **read-only by contract**: it never fires a stimulus. The human reviews and accepts; the runner executes; a fresh judge rules. Dogfooded on this repo: a diff adding `createdAt` to the demo's write path was scouted into a scenario (`examples/todo-api/scenario-createdat-exposed.json`) that the runner then verified green against the live server — diff to verified claim, no hand-written test.
 
+## The loop: autonomous build-verify (v1.0)
+
+`proofloop-build` turns "build feature X" into "feature X is deployed and proven": **claims before code** (scout on the intent), then build → deploy → scout the real diff → runner → fresh judge, iterating on the verdict's evidence quotes until `allPassed: true` or genuinely blocked. Hard anti-self-deception rules: never weaken a claim to make it pass; iteration cap 5; stop on repeated identical evidence (a non-converging loop has a wrong diagnosis, not insufficient effort); previously-green claims re-run every round; every iteration sweeps its tags. The exit condition is a verdict from reality, not the builder's satisfaction.
+
+## The gym: calibration as CI (v1.0)
+
+`gym/run-gym.mjs` starts the demo server as each of its four liars (reply-liar, log-liar, partial-persist, stale-UI) plus honest modes, runs the matching scenarios through the runner, and asserts the mechanical facts show **exactly** the signature each failure class must produce — including the nastiest case, the log-liar, where the log check passes while state fails. Any proofloop change must leave the gym clean:
+
+```
+node gym/run-gym.mjs
+...
+GYM CLEAN: every liar caught, honest servers pass.
+```
+
+Trust in a verifier shouldn't come from months of anecdotes; here it's a test suite.
+
 ## Status and roadmap
 
-v0.5 — the runner (v0.3), browser/vision evidence (v0.4), and scout (v0.5). The mechanical half is now owned by a **zero-dependency runner CLI** (`bin/proofloop-runner.mjs`): charset-enforced substitution, liveness probe, baseline reads with debris/collision abort, stimulus execution, outcome-polling against evidence (not blind sleeps), verbatim evidence capture, mechanical contains/absent checks with quoted matching lines, and cleanup with a verified sweep — all recorded to `.proofloop/runs/<run_id>/record.json`. The model writes the scenario and judges the record; code does everything models fumble. The runner never judges — by design.
+v1.0 — runner (v0.3), browser/vision evidence (v0.4), scout (v0.5), build loop + gym (v1.0). Every component was verified live before its release, and the development of v1.0 itself ran as a proofloop-build loop: iteration 1 caught a real YAML-parser bug via a failing stimulus lookup; iteration 2 went green; the gym then passed as the regression floor. Next: adapter recipes for real stacks (Postgres, Telegram bots, queues), more gym residents, and war stories. The mechanical half is now owned by a **zero-dependency runner CLI** (`bin/proofloop-runner.mjs`): charset-enforced substitution, liveness probe, baseline reads with debris/collision abort, stimulus execution, outcome-polling against evidence (not blind sleeps), verbatim evidence capture, mechanical contains/absent checks with quoted matching lines, and cleanup with a verified sweep — all recorded to `.proofloop/runs/<run_id>/record.json`. The model writes the scenario and judges the record; code does everything models fumble. The runner never judges — by design.
 
 Both the runner and the earlier prompt-orchestrated loop have been dogfooded end-to-end against the demo in both modes (the verdicts above are captured, not typed). The runner's first live run immediately demonstrated why judges must read `matching_lines` rather than trust `found` booleans: the needle `"persisted"` substring-matched the liar's own `"(nothing persisted)"` log line.
 

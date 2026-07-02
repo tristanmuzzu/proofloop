@@ -73,7 +73,9 @@ function parseYamlSubset(text) {
 
     const m = line.match(/^([A-Za-z_][A-Za-z0-9_]*)\s*:(.*)$/);
     if (!m) throw new Error(`line ${n + 1}: cannot parse: ${line.slice(0, 60)}`);
-    const key = m[1], rest = m[2];
+    const key = m[1];
+    // a value that is only a trailing comment means "no value" (container follows)
+    const rest = m[2].trim().startsWith("#") ? "" : m[2];
 
     if (isListItem) {
       while (stack.length && stack[stack.length - 1][0] >= indent) stack.pop();

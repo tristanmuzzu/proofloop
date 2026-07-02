@@ -17,6 +17,10 @@ stimuli:
     run: 'curl -s -X POST localhost:3000/todos -H "content-type: application/json" -d "{\"title\": \"{input} [{tag}]\"}"'
   complete_todo:
     run: 'curl -s -X PATCH localhost:3000/todos/{id} -H "content-type: application/json" -d "{\"done\": true}"'
+  create_then_delete_todo:      # composite: create a tagged todo, then delete it by its real id
+    run: 'ID=$(curl -s -X POST localhost:3000/todos -H "content-type: application/json" -d "{\"title\": \"{input} [{tag}]\"}" | grep -o "\"id\":[0-9]*" | cut -d: -f2) && curl -s -X DELETE localhost:3000/todos/$ID'
+  delete_missing_todo:          # error path: id that cannot exist
+    run: 'curl -s -X DELETE localhost:3000/todos/999999'
 
 evidence:
   api_state:

@@ -1,0 +1,14 @@
+{
+  "claim": "deleting a nonexistent todo id returns a failure, not success",
+  "stimulus": {
+    "name": "delete_missing_todo",
+    "inputs": {}
+  },
+  "settle": { "evidence": "server_log", "expect": "DELETE /todos/999999" },
+  "expect": [
+    { "evidence": "server_log", "contains": "DELETE /todos/999999 -> 404" }
+  ],
+  "absent": [
+    { "evidence": "server_log", "contains": "DELETE /todos/999999 removed" }
+  ]
+}

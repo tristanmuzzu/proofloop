@@ -1,0 +1,14 @@
+{
+  "claim": "DELETE /todos/:id removes the todo - it no longer appears in reads",
+  "stimulus": {
+    "name": "create_then_delete_todo",
+    "inputs": { "input": "delete me todo" }
+  },
+  "settle": { "evidence": "server_log", "expect": "DELETE /todos/" },
+  "expect": [
+    { "evidence": "server_log", "contains": "removed" }
+  ],
+  "absent": [
+    { "evidence": "api_state", "contains": "{tag}" }
+  ]
+}
