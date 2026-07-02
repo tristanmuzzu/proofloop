@@ -1,0 +1,36 @@
+# proofloop configuration — copy to your repo root as verify.yaml and adapt.
+#
+# Three vocabularies:
+#   stimuli:  how to poke the LIVE system (anything executable)
+#   evidence: how to observe REAL state afterwards (output = the evidence)
+#   cleanup:  how to remove tagged test entities
+#
+# {tag} is replaced with the run tag; {input}/{id} are scenario-provided values.
+
+tag: "proofloop-{run_id}"          # stamp this on everything a scenario creates
+
+settle:
+  timeout_seconds: 30              # max wait for the system to settle per scenario
+  poll: "curl -s localhost:3000/health"   # cheapest liveness probe to poll while waiting
+
+stimuli:
+  create_todo:
+    run: 'curl -s -X POST localhost:3000/todos -H "content-type: application/json" -d "{\"title\": \"{input} [{tag}]\"}"'
+    note: "POST a todo through the public API, title carries the tag"
+  complete_todo:
+    run: 'curl -s -X PATCH localhost:3000/todos/{id} -d "{\"done\": true}"'
+
+evidence:
+  api_state:
+    run: "curl -s localhost:3000/todos"
+    note: "source of truth via the read API"
+  server_log:
+    run: "tail -50 server.log"
+    note: "what the server actually did this run"
+  # For real systems, evidence sources look like:
+  #   db_rows:   run: 'psql "$DB_URL" -c "SELECT id,title,done FROM todos WHERE title LIKE ''%{tag}%''"'
+  #   downstream: run: 'curl -s https://api.example.com/v1/jobs?tag={tag} -H "authorization: Bearer $TOKEN"'
+
+cleanup:
+  - run: 'curl -s -X DELETE "localhost:3000/todos?tag={tag}"'
+  - verify: "curl -s localhost:3000/todos"   # judge confirms zero {tag} entities remain

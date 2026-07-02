@@ -1,0 +1,18 @@
+{
+  "name": "proofloop",
+  "owner": {
+    "name": "tristanmuzzu",
+    "url": "https://github.com/tristanmuzzu"
+  },
+  "metadata": {
+    "description": "Your agent says 'done'. Proofloop checks whether reality agrees."
+  },
+  "plugins": [
+    {
+      "name": "proofloop",
+      "description": "Live-system verification loop: real stimuli, independent evidence, binary verdicts, tagged cleanup. Includes a fresh-context verifier agent.",
+      "source": "./",
+      "category": "testing"
+    }
+  ]
+}

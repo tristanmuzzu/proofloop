@@ -1,0 +1,25 @@
+# proofloop config for the demo todo API (examples/todo-api/server.mjs)
+# Start the server first:  node server.mjs > server.log
+tag: "proofloop-{run_id}"
+
+settle:
+  timeout_seconds: 10
+  poll: "curl -s localhost:3000/health"
+
+stimuli:
+  create_todo:
+    run: 'curl -s -X POST localhost:3000/todos -H "content-type: application/json" -d "{\"title\": \"{input} [{tag}]\"}"'
+  complete_todo:
+    run: 'curl -s -X PATCH localhost:3000/todos/{id} -H "content-type: application/json" -d "{\"done\": true}"'
+
+evidence:
+  api_state:
+    run: "curl -s localhost:3000/todos"
+    note: "the read API - would a user actually see the todo?"
+  server_log:
+    run: "tail -30 server.log"
+    note: "what the server says it actually did"
+
+cleanup:
+  - run: 'curl -s -X DELETE "localhost:3000/todos?tag={tag}"'
+  - verify: "curl -s localhost:3000/todos"
