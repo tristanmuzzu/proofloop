@@ -30,6 +30,33 @@ See `verify.example.yaml` in this plugin for the schema. If no `verify.yaml` exi
 
 Run the whole loop in a **fresh-context agent** — one that did not build the change. This plugin ships `proofloop-verifier` for exactly that; when it is available, spawning it is the default, not an option. When it isn't (plugin not installed as a plugin, or no agent support), the loop may run inline ONLY if the executor did not implement the change being verified; a builder judging its own deploy is self-critique, which this tool exists to replace.
 
+## The runner (default execution path)
+
+The mechanical half of the loop — substitution, liveness, baseline reads, stimulus, settle-polling, evidence capture, contains/absent checks, cleanup + verified sweep — is owned by `bin/proofloop-runner.mjs` (zero-dependency, Node 18+). You write a **scenario JSON** (see `examples/todo-api/scenario-create-persists.json`):
+
+```json
+{
+  "claim": "...",
+  "stimulus": {"name": "<declared stimulus>", "inputs": {"input": "..."}},
+  "settle": {"evidence": "<cheapest source>", "expect": "{tag}"},
+  "expect": [{"evidence": "<source>", "contains": "<distinctive marker>"}],
+  "absent": [{"evidence": "<source>", "contains": "<must-not-appear marker>"}]
+}
+```
+
+then run:
+
+```
+node <plugin>/bin/proofloop-runner.mjs run --config verify.yaml --scenario scenario.json
+```
+
+It writes verbatim evidence files plus `record.json` into `.proofloop/runs/<run_id>/` and prints a summary of **mechanical facts only** — it never judges. It also aborts before any mutation if the tag already appears in a baseline read (debris/collision protection). You judge from `record.json` and the raw evidence files. Two judging notes the runner's design forces on you:
+
+- A `found: true` is not a PASS: read the `matching_lines` — a weak needle can substring-match a failure message (e.g. `"persisted"` matching `"nothing persisted"`). Choose distinctive markers; quote the lines in your verdict.
+- `settled: false` plus empty expects is the classic reply-lied signature; the burned settle budget is documented in the record.
+
+When Node is unavailable, fall back to executing steps 3–5 below manually under the same contract.
+
 ## The loop
 
 ### 1. Scope — what changed, what is claimed

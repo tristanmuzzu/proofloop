@@ -6,6 +6,7 @@
 # NOTE: the demo server's cleanup deletes by SUBSTRING match on the tag —
 # run_ids must be collision-safe (no run_id a prefix of another).
 tag: "proofloop-{run_id}"
+shell: bash          # run: commands need bash (tail); on Windows use Git Bash
 
 settle:
   timeout_seconds: 10

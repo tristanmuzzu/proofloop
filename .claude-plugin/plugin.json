@@ -1,7 +1,7 @@
 {
   "name": "proofloop",
   "description": "Claim-vs-reality verification for deployed changes. Fires real stimuli at the LIVE system, audits independent evidence surfaces (DB rows, API state, logs), and returns a binary PASS/FAIL verdict per claim - because a system's own reply is a claim, not evidence.",
-  "version": "0.1.0",
+  "version": "0.3.0",
   "author": {
     "name": "tristanmuzzu",
     "url": "https://github.com/tristanmuzzu"
@@ -9,5 +9,13 @@
   "homepage": "https://github.com/tristanmuzzu/proofloop",
   "repository": "https://github.com/tristanmuzzu/proofloop",
   "license": "MIT",
-  "keywords": ["verification", "testing", "agents", "e2e", "live", "evidence", "deploy"]
+  "keywords": [
+    "verification",
+    "testing",
+    "agents",
+    "e2e",
+    "live",
+    "evidence",
+    "deploy"
+  ]
 }

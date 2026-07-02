@@ -88,7 +88,11 @@ Then copy `verify.example.yaml` to your repo root as `verify.yaml` and adapt the
 
 ## Status and roadmap
 
-v0.2. The loop is prompt-orchestrated: the skill + verifier agent do everything through your shell. It has been dogfooded end-to-end (the verdicts above are captured, not typed), and the spec incorporates the friction findings from that run. The natural next step, if there's interest, is a small runner CLI that owns the mechanical parts — placeholder substitution, settle-polling, evidence capture, cleanup verification — so the model only designs scenarios and judges. Adapter recipes for common stacks (Postgres, Telegram bots, queues) are the other obvious contribution surface.
+v0.3. The mechanical half is now owned by a **zero-dependency runner CLI** (`bin/proofloop-runner.mjs`): charset-enforced substitution, liveness probe, baseline reads with debris/collision abort, stimulus execution, outcome-polling against evidence (not blind sleeps), verbatim evidence capture, mechanical contains/absent checks with quoted matching lines, and cleanup with a verified sweep — all recorded to `.proofloop/runs/<run_id>/record.json`. The model writes the scenario and judges the record; code does everything models fumble. The runner never judges — by design.
+
+Both the runner and the earlier prompt-orchestrated loop have been dogfooded end-to-end against the demo in both modes (the verdicts above are captured, not typed). The runner's first live run immediately demonstrated why judges must read `matching_lines` rather than trust `found` booleans: the needle `"persisted"` substring-matched the liar's own `"(nothing persisted)"` log line.
+
+Roadmap: browser/vision evidence surfaces via Playwright (catch honest-API-but-stale-UI), a scout mode that derives claims and proposes verify.yaml entries from the deployed diff, and a "liar's gym" — a regression suite of deliberately deceptive demo servers that every proofloop change must still catch. Adapter recipes for common stacks (Postgres, Telegram bots, queues) are the other obvious contribution surface.
 
 ## Origin
 

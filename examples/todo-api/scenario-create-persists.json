@@ -1,0 +1,15 @@
+{
+  "claim": "creating a todo through the API persists it",
+  "stimulus": {
+    "name": "create_todo",
+    "inputs": { "input": "synthetic demo todo" }
+  },
+  "settle": { "evidence": "api_state", "expect": "{tag}" },
+  "expect": [
+    { "evidence": "api_state", "contains": "{tag}" },
+    { "evidence": "server_log", "contains": "persisted #" }
+  ],
+  "absent": [
+    { "evidence": "server_log", "contains": "LIED" }
+  ]
+}
