@@ -11,13 +11,20 @@
 // mechanically, so the judge works from facts no prompt can fumble.
 //
 // Usage:
-//   node proofloop-runner.mjs run --config <verify.yaml> --scenario <scenario.json> [--run-id <id>]
+//   legacy:   node proofloop-runner.mjs run --config <verify.yaml> --scenario <scenario.json> [--run-id <id>]
+//   contract: node proofloop-runner.mjs run --state <state.json> --scenario-id <id> [--run-id <id>]
 //
 // Zero dependencies. Node 18+.
 
 import { execSync } from "node:child_process";
 import { mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
+import {
+  assertStateFrozen,
+  loadWorkflowState,
+  materializeScenario,
+  resolveInside,
+} from "./proofloop-contract.mjs";
 
 // ---------- minimal YAML subset parser (the verify.yaml schema only) ----------
 // Supports: nested maps via 2-space indent, `- key: value` list entries,
@@ -155,7 +162,7 @@ const matchingLines = (output, needle, cap = 3) =>
 function main() {
   const args = process.argv.slice(2);
   if (args[0] !== "run") {
-    console.error("usage: proofloop-runner.mjs run --config <verify.yaml> --scenario <scenario.json> [--run-id <id>]");
+    console.error("usage: proofloop-runner.mjs run (--config <verify.yaml> --scenario <scenario.json> | --state <state.json> --scenario-id <id>) [--run-id <id>]");
     process.exit(2);
   }
   const opt = (name) => {
@@ -163,40 +170,76 @@ function main() {
     return i !== -1 ? args[i + 1] : undefined;
   };
 
-  const configPath = resolve(opt("config") || "verify.yaml");
-  const scenarioPath = resolve(opt("scenario") || "");
+  const fail = (msg) => {
+    console.error(`proofloop-runner: ${msg}`);
+    process.exit(2);
+  };
+
+  let workflowState = null;
+  let configPath;
+  let scenarioPath;
+  let scenario;
+  if (opt("state")) {
+    try {
+      workflowState = assertStateFrozen(loadWorkflowState(resolve(opt("state"))));
+      if (workflowState.phase !== "verifying") {
+        fail(`workflow state must be verifying, got: ${workflowState.phase}`);
+      }
+      const scenarioId = opt("scenario-id");
+      if (!scenarioId) fail("contract mode requires --scenario-id");
+      scenario = materializeScenario(workflowState.contract, scenarioId);
+      configPath = resolveInside(workflowState.worktree, workflowState.contract.config, "config");
+      scenarioPath = `${workflowState.contractPath}#${scenarioId}`;
+    } catch (error) {
+      fail(error instanceof Error ? error.message : String(error));
+    }
+  } else {
+    configPath = resolve(opt("config") || "verify.yaml");
+    scenarioPath = resolve(opt("scenario") || "");
+    if (!opt("scenario")) fail("legacy mode requires --scenario");
+    scenario = JSON.parse(readFileSync(scenarioPath, "utf8"));
+  }
   const cwd = dirname(configPath);
 
   const config = parseYamlSubset(readFileSync(configPath, "utf8"));
-  const scenario = JSON.parse(readFileSync(scenarioPath, "utf8"));
   const shell = config.shell || undefined;
   const settleTimeoutS = Number(config.settle?.timeout_seconds ?? 30);
   const cmdTimeoutMs = 60_000;
 
   // run_id + tag
-  const runId = opt("run-id") || scenario.run_id ||
+  const plannedRunId = workflowState?.runIds.at(-1);
+  const runId = opt("run-id") || plannedRunId || scenario.run_id ||
     `r-${new Date().toISOString().slice(0, 10).replaceAll("-", "")}-${Math.random().toString(36).slice(2, 6)}`;
   if (!RUN_ID_RE.test(runId)) fail(`run_id must match [a-z0-9-]+, got: ${runId}`);
+  if (workflowState && runId !== plannedRunId) {
+    fail(`run_id must match the fresh workflow attempt: ${plannedRunId}`);
+  }
   if (!config.tag || !String(config.tag).includes("{run_id}")) fail("config.tag must contain {run_id}");
   const tag = String(config.tag).replaceAll("{run_id}", runId);
 
-  const vars = { run_id: runId, tag, ...(scenario.stimulus?.inputs || {}) };
+  const vars = {
+    run_id: runId,
+    tag,
+    ...(workflowState ? { scenario_id: scenario.id } : {}),
+    ...(scenario.stimulus?.inputs || {}),
+  };
   const record = {
-    proofloop_runner: "0.3.0", run_id: runId, tag,
+    proofloop_runner: "1.1.0", run_id: runId, tag,
+    contract_id: workflowState?.contract.contractId ?? null,
+    contract_digest: workflowState?.contractDigest ?? null,
+    scenario_id: scenario.id ?? null,
     config: configPath, scenario: scenarioPath, cwd,
     claim: scenario.claim, started_at: new Date().toISOString(),
     liveness: null, baseline: {}, baseline_collision: false,
     stimulus: null, settle: null, evidence: {}, checks: [], cleanup: [],
     cleanup_verified: null, warnings: [],
   };
-  const runDir = join(cwd, ".proofloop", "runs", runId);
+  const runDir = workflowState
+    ? join(cwd, ".proofloop", "runs", runId, scenario.id)
+    : join(cwd, ".proofloop", "runs", runId);
   mkdirSync(runDir, { recursive: true });
   const save = (name, content) => writeFileSync(join(runDir, name), content ?? "", "utf8");
 
-  function fail(msg) {
-    console.error(`proofloop-runner: ${msg}`);
-    process.exit(2);
-  }
   const evidenceCmd = (name) => {
     const src = config.evidence?.[name];
     if (!src?.run) fail(`evidence source '${name}' not declared in config`);
@@ -263,19 +306,23 @@ function main() {
 
   // 6. mechanical checks (facts for the judge - NOT a verdict)
   const readEvidence = (name) => readFileSync(join(runDir, `evidence-${name}.txt`), "utf8");
-  for (const exp of scenario.expect || []) {
+  for (const [index, exp] of (scenario.expect || []).entries()) {
     const needle = substitute(exp.contains, vars, "expect.contains");
     const out = readEvidence(exp.evidence);
     record.checks.push({
+      id: exp.id || `expect-${index + 1}`,
       type: "expect", evidence: exp.evidence, contains: needle,
+      oracle: exp.oracle || null,
       found: out.includes(needle), matching_lines: matchingLines(out, needle),
     });
   }
-  for (const abs of scenario.absent || []) {
+  for (const [index, abs] of (scenario.absent || []).entries()) {
     const needle = substitute(abs.contains, vars, "absent.contains");
     const out = readEvidence(abs.evidence);
     record.checks.push({
+      id: abs.id || `absent-${index + 1}`,
       type: "absent", evidence: abs.evidence, contains: needle,
+      oracle: abs.oracle || null,
       found: out.includes(needle), matching_lines: matchingLines(out, needle),
     });
   }
@@ -304,6 +351,8 @@ function main() {
   save("record.json", JSON.stringify(record, null, 2));
   console.log(JSON.stringify({
     run_id: runId, tag, run_dir: runDir,
+    contract_id: record.contract_id,
+    scenario_id: record.scenario_id,
     stimulus_ok: record.stimulus.ok,
     settled: record.settle.settled ?? null,
     checks: record.checks.map((c) => ({ type: c.type, evidence: c.evidence, found: c.found })),

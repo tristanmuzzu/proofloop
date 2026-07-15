@@ -10,7 +10,7 @@
   "plugins": [
     {
       "name": "proofloop",
-      "description": "Live-system verification loop: real stimuli, independent evidence, binary verdicts, tagged cleanup. Includes a fresh-context verifier agent.",
+      "description": "Pre-build proof contracts plus live-system verification: real stimuli, independent evidence, binary verdicts, and tagged cleanup.",
       "source": "./",
       "category": "testing"
     }
