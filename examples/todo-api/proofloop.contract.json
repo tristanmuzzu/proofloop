@@ -1,0 +1,100 @@
+{
+  "schemaVersion": "1.0",
+  "contractId": "PROOFLOOP_VERIFY_TODO_PERSISTENCE",
+  "createdAt": "2026-07-15T00:00:00.000Z",
+  "createdBeforeImplementation": true,
+  "changeIntent": "Create todo items durably and return an honest result for missing deletes.",
+  "config": "examples/todo-api/verify.yaml",
+  "implementationPaths": [
+    "examples/todo-api/server.mjs"
+  ],
+  "declaredSurface": [
+    "POST /todos",
+    "DELETE /todos/:id"
+  ],
+  "preservedBehavior": [
+    "Deleting an unknown todo remains a non-mutating 404."
+  ],
+  "scenarios": [
+    {
+      "id": "happy-create",
+      "kind": "happy_path",
+      "description": "A created todo is returned and persists in independent state.",
+      "surface": "POST /todos",
+      "claim": "A successful create reply corresponds to a persisted todo.",
+      "preconditions": [
+        "The demo server is healthy.",
+        "The fresh run tag is absent from state and logs."
+      ],
+      "stimulus": {
+        "name": "create_todo",
+        "inputs": {
+          "input": "contract mode todo"
+        }
+      },
+      "settle": {
+        "evidence": "api_state",
+        "expect": "{tag}"
+      },
+      "checks": [
+        {
+          "id": "create-api-state",
+          "type": "expect",
+          "evidence": "api_state",
+          "contains": "{tag}",
+          "oracle": "A separate GET observes the unique created todo.",
+          "required": true
+        },
+        {
+          "id": "create-server-log",
+          "type": "expect",
+          "evidence": "server_log",
+          "contains": "persisted #",
+          "oracle": "The mutation path records a persistence event.",
+          "required": true
+        },
+        {
+          "id": "create-no-lie-marker",
+          "type": "absent",
+          "evidence": "server_log",
+          "contains": "LIED",
+          "oracle": "The server did not take its deliberate false-success path.",
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "missing-delete",
+      "kind": "preservation",
+      "description": "Deleting an unknown todo reports absence without inventing a mutation.",
+      "surface": "DELETE /todos/:id",
+      "claim": "An unknown todo is reported missing and is not logged as removed.",
+      "preconditions": [
+        "Todo 999999 does not exist."
+      ],
+      "stimulus": {
+        "name": "delete_missing_todo",
+        "inputs": {}
+      },
+      "settle": null,
+      "checks": [
+        {
+          "id": "missing-delete-404",
+          "type": "expect",
+          "evidence": "server_log",
+          "contains": "DELETE /todos/999999 -> 404",
+          "oracle": "The server records the missing-resource outcome.",
+          "required": true
+        },
+        {
+          "id": "missing-delete-not-removed",
+          "type": "absent",
+          "evidence": "server_log",
+          "contains": "DELETE /todos/999999 removed",
+          "oracle": "No successful removal is recorded for the missing resource.",
+          "required": true
+        }
+      ]
+    }
+  ]
+}

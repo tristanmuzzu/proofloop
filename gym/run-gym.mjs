@@ -10,13 +10,22 @@
 // Usage: node gym/run-gym.mjs        (from the repo root; needs the demo deps)
 
 import { spawn, execSync } from "node:child_process";
-import { rmSync } from "node:fs";
+import { existsSync, readFileSync, rmSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const DEMO = join(ROOT, "examples", "todo-api");
 const RUNNER = join(ROOT, "bin", "proofloop-runner.mjs");
+
+// `bash.exe` can resolve to the empty WSL shim on Windows. Prefer Git Bash,
+// which is what the demo config requires, when it is installed conventionally.
+if (process.platform === "win32") {
+  const gitBashDir = "C:\\Program Files\\Git\\bin";
+  if (existsSync(join(gitBashDir, "bash.exe"))) {
+    process.env.PATH = `${gitBashDir};${process.env.PATH || ""}`;
+  }
+}
 
 // signature: scenario -> expected mechanical facts per check, keyed "type:evidence:needle-prefix"
 const CASES = [
@@ -91,6 +100,8 @@ for (const c of CASES) {
   await sleep(400);
 
   const problems = [];
+  const record = JSON.parse(readFileSync(join(summary.run_dir, "record.json"), "utf8"));
+  if (summary.stimulus_ok !== true) problems.push(`stimulus_ok=${summary.stimulus_ok}`);
   if (c.expect.settled !== undefined && summary.settled !== c.expect.settled) {
     problems.push(`settled=${summary.settled}, want ${c.expect.settled}`);
   }
@@ -99,6 +110,7 @@ for (const c of CASES) {
     const check = summary.checks.find((x) => x.type === type && x.evidence === evidence);
     if (!check) problems.push(`missing check ${key}`);
     else if (check.found !== want) problems.push(`${key}: found=${check.found}, want ${want}`);
+    if (record.evidence?.[evidence]?.ok !== true) problems.push(`${evidence}: evidence command failed`);
   }
   if (summary.cleanup_verified !== true) problems.push(`cleanup_verified=${summary.cleanup_verified}`);
 

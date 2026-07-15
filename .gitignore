@@ -2,4 +2,5 @@
 node_modules/
 package-lock.json
 examples/todo-api/server.log
+examples/todo-api/server.err
 examples/todo-api/server.pid

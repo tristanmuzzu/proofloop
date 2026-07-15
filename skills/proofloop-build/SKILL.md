@@ -1,43 +1,45 @@
 ---
 name: proofloop-build
-description: Autonomous build-verify loop - "build feature X" goes off, builds, deploys, and verifies against the LIVE system over and over until every claim passes or the loop is genuinely blocked. Use when the user asks to build a feature end-to-end with verified completion ("build X and make sure it works", "don't stop until it's proven"). Composes proofloop-scout (claims), the runner (execution), and a fresh-context judge (verdicts) into one loop with hard anti-self-deception rules.
+description: Build, deploy, and repair a feature until a frozen pre-build proof contract passes against the live system or a concrete external blocker prevents progress. Composes proofloop-scout, the contract CLI, runner, and fresh-context verifier.
 ---
 
-# Proofloop Build — build until reality agrees
+# Proofloop Build
 
-The loop that turns "build feature X" into "feature X is deployed and proven": claims first, then iterate build → deploy → verify on live evidence until `allPassed: true` or genuinely blocked. The whole point is that **the exit condition is a verdict from reality, not the builder's satisfaction.**
+The exit condition is a validated verdict from deployed reality, not the builder's satisfaction.
 
-## The loop
+## Loop
 
-### 0. Claims before code
-Run `proofloop-scout` on the *intent* (there is no diff yet): derive the target claims — the observable behaviors that will be true when the feature works. Present them in one line each. These claims are the contract for the entire loop; write them down before the first line of implementation. If verify.yaml lacks surfaces for them, propose the additions now (human confirms once, up front — not mid-loop).
+### 0. Freeze proof before code
 
-### 1. Build the smallest slice that could satisfy the claims
-Implement. Keep the diff scoped to the feature.
+Run `proofloop-scout` on the intent and repository. Produce exactly 2-3 distinct scenarios: one happy path plus the smallest useful alternate, preservation, or security path. Every scenario needs positive and negative observations.
 
-### 2. Deploy for real
-Whatever "deployed" means for this system: restart the process, push the branch, roll the pod. Verification against a stale process proves nothing — confirm the running system carries the change (version endpoint, startup log line, or the liveness probe after restart).
+Get any live-stimulus approval now. Validate and initialize `proofloop.contract.json` before changing an implementation path. The contract and `verify.yaml` are now immutable for this scope.
 
-### 3. Scout the actual diff
-Re-run scout on the real diff. It usually confirms the Step-0 claims, sometimes adds one you didn't foresee (a log line you added is a new needle; an error path you wrote deserves its own claim). Update scenarios accordingly.
+### 1. Build and check locally
 
-### 4. Run the runner, judge the record
-Execute every scenario via the runner. Judge each claim from `record.json` and the raw evidence files — or better, hand judging to a fresh-context agent if one is available. Binary verdicts, evidence quoted.
+Implement the smallest coherent slice. Run relevant tests. Move state to `local_green` only with actual passing evidence.
 
-### 5. Exit or iterate
-- **All claims PASS + cleanup clean → done.** Report the verdicts with evidence, then stop.
-- **Any FAIL → iterate.** The verdict's evidence quotes ARE the bug report: feed them into the next build step (step 1) verbatim. Go around again.
+### 2. Deploy the exact revision
 
-## Hard rules (anti-self-deception)
+Deploy through the repository's normal path and record the exact running revision. A local commit, queued deployment, or stale process is not deployed proof.
 
-1. **Never weaken a claim to make it pass.** Editing a claim, an expected marker, or a scenario so a failing behavior counts as success is the one forbidden move. If a claim was genuinely wrong (misunderstood requirement), say so explicitly, get the human's confirmation, and record the change — that is a scope decision, not a verification decision.
-2. **Iteration cap: 5.** Past it, stop and report honestly: what passes, what still fails, with the evidence.
-3. **No-progress detection: 2.** If the same scenario fails with materially identical evidence twice in a row, the loop is not converging — the diagnosis is wrong, not the effort. Stop, report the repeated evidence, and either re-derive from first principles or hand back to the human. Iterating on an unchanged hypothesis is how loops burn budgets.
-4. **Deploy check every round.** A surprising FAIL after a "fix" is very often a stale deploy. Confirm the change is live before believing the evidence contradicts your code.
-5. **Regression floor.** Claims that passed in an earlier iteration re-run in every later one. A fix that breaks a previously-green claim is a FAIL, not a trade.
-6. **Cleanup always.** Every iteration sweeps its tags, even mid-loop failures. N iterations must not leave N piles of debris.
-7. **Report faithfully at every exit.** "4 of 5 claims pass, the fifth fails with <evidence>" is a good, honest terminal state. "Mostly done" is not.
+### 3. Verify the frozen scenarios
 
-## Blocked is an answer
+Start `verifying` with a fresh run ID. Execute every scenario from workflow state. A fresh-context verifier judges the raw records and produces the strict report.
 
-Genuinely blocked means: a claim needs a surface that doesn't exist (report as unverifiable-as-deployed), a stimulus requires credentials/confirmation the human hasn't given, or no-progress triggered twice on re-derived diagnoses. Say which, hand over the run records, stop. An honest blocked report after 3 iterations beats a fabricated success after 5 — the gym's log-liar exists precisely because "the log said done" isn't done.
+### 4. Accept or repair
+
+- Validated `allPassed: true` plus clean cleanup: transition to `passed` and report the evidence.
+- Any failure: return to `local_green`, diagnose from the evidence, repair, redeploy, and verify every scenario under another fresh run ID.
+- Concrete external dependency or missing authority: transition to `blocked` with the exact reason and preserve the records.
+
+## Anti-self-deception rules
+
+1. Never weaken or rewrite the frozen contract because implementation failed it. A genuine requirement correction creates a new explicit contract with human acknowledgement.
+2. Never add scenarios after inspecting the diff. Scout may audit coverage and report a scope gap, but the current contract stays frozen.
+3. There is no arbitrary iteration cap. Continue while safe in-scope progress exists.
+4. Repeated identical evidence is a signal to re-derive the diagnosis from first principles, inspect deployment identity, and test the current hypothesis. It is not permission to stop or call success.
+5. Confirm the exact deploy every round.
+6. Re-run every frozen scenario every round, including previously green ones.
+7. Sweep and verify tagged cleanup every round.
+8. Report the actual terminal state: passed or concretely blocked. Never translate partial success into done.

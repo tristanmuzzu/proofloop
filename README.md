@@ -1,135 +1,173 @@
 # proofloop
 
-**Your agent says "done". Proofloop checks whether reality agrees.**
+**Your agent says "done." Proofloop checks whether reality agrees.**
 
-A [Claude Code](https://claude.com/claude-code) plugin that verifies deployed changes against the **live running system** — by firing real stimuli, auditing independent evidence surfaces, and issuing binary PASS/FAIL verdicts per claim.
+A [Claude Code](https://claude.com/claude-code) plugin that freezes what must be proven **before implementation**, then verifies the deployed change using real stimuli, independent evidence, and strict PASS/FAIL reports.
 
 ## Why this exists
 
-Every eval framework, test suite, and "verification loop" out there checks your code *before* it runs, or checks *the text of the system's reply*. Neither catches the failure class that actually burns you in production:
+An API can return `{"ok": true}` without persisting anything. A bot can say "done" without firing its tool. A job can log "completed" after dropping half the batch.
 
-> The bot replies **"done!"** — and never fired the tool.
-> The API returns **`{"ok": true}`** — and persisted nothing.
-> The job logs **"completed"** — and silently dropped half the batch.
+**A system's own reply is a claim, not evidence.** Proofloop compares that claim with state the system cannot fake through wording: database rows, downstream API state, execution logs, files, and browser output. When they disagree, evidence wins.
 
-**A system's own reply is a claim, not evidence.** Proofloop treats it that way. Evidence is a database row, a downstream API's state, a log line from the actual execution path — something the system cannot fake by phrasing. If claim and evidence disagree, evidence wins, scenario fails.
+## What changed in v1.1
 
-## How it works
+Proofloop used to describe "claims before code" as an agent rule. v1.1 makes it executable:
 
-You declare, in one `verify.yaml`, three things about your system:
+- exactly 2-3 distinct scenarios are frozen before implementation;
+- every scenario includes a positive observation and a must-not-happen observation;
+- the proof contract and `verify.yaml` share an immutable SHA-256 digest;
+- workflow state moves through `planned -> local_green -> deployed -> verifying -> passed`;
+- every verification attempt requires a fresh run ID and exact deployed revision;
+- a report cannot claim `allPassed: true` unless every frozen observation passed and cleanup is clean;
+- failed evidence starts another repair attempt without an arbitrary iteration cap.
+
+The runner's original standalone scenario mode remains available for ad-hoc verification.
+
+## The workflow
+
+Proofloop separates four responsibilities:
+
+1. **Scout** reads the intent and repository, discovers real stimuli/evidence surfaces, and proposes the smallest sufficient contract.
+2. **Contract CLI** freezes the 2-3 scenarios before implementation and enforces workflow state.
+3. **Runner** performs baseline reads, stimulus execution, settling, evidence capture, mechanical checks, and verified cleanup.
+4. **Fresh-context verifier** judges the frozen claims from raw records and returns a complete report.
+
+`verify.yaml` defines reusable system access:
 
 ```yaml
-stimuli:    # how to poke it   (HTTP calls, CLI commands, message sends...)
-evidence:   # how to observe REAL state  (SQL, API reads, log greps...)
-cleanup:    # how to remove tagged test entities, + a verify read
+tag: proofloop-{run_id}
+
+stimuli:
+  create_widget:
+    run: 'curl -s -X POST localhost:3000/widgets -d "name={tag}"'
+
+evidence:
+  widget_state:
+    run: 'curl -s localhost:3000/widgets'
+
+cleanup:
+  - run: 'curl -s -X DELETE localhost:3000/widgets/by-tag/{tag}'
+    verify: 'curl -s localhost:3000/widgets?tag={tag}'
 ```
 
-Then, after deploying a change, a **fresh-context verifier agent** (it didn't build the change, so it isn't grading its own homework) runs the loop:
+`proofloop.contract.json` defines the change-specific claims and observations. See [`proofloop.contract.example.json`](proofloop.contract.example.json) or the runnable [todo demo contract](examples/todo-api/proofloop.contract.json).
 
-1. **Scope** — derive testable *claims* from the diff/intent.
-2. **Smallest sufficient scenarios** — 1–3 (max 7). A spot-weld, not a test suite.
-3. **Baseline-read, stimulate, settle, collect** — tagged synthetic inputs; evidence captured verbatim from every declared surface.
-4. **Judge** — binary PASS/FAIL per claim. Missing evidence = FAIL, not pass. The stimulus reply lives in a `reply` field — never in `evidence`.
-5. **Cleanup** — tagged entities swept, sweep verified, leftovers reported.
-6. **Verdict** — structured JSON; `allPassed: true` is the only "done".
+## Quick start
 
-## Watch it catch a liar (verdicts below are captured from a real run)
+Install the plugin:
 
-The demo todo API has a `LIE_MODE`: it returns `201 {"ok": true}` on create **without persisting anything**.
-
-```bash
-cd examples/todo-api
-LIE_MODE=1 node server.mjs > server.log 2>&1 &
-echo $! > server.pid            # stop later with: kill $(cat server.pid)
-```
-
-Then in Claude Code:
-
-> Use proofloop with examples/todo-api/verify.yaml to verify: "creating a todo through the API persists it".
-
-Captured verdict (run 1, LIE_MODE on):
-
-```json
-{
-  "allPassed": false,
-  "scenarios": [{
-    "claim": "creating a todo through the API persists it",
-    "stimulus": {"name": "create_todo", "inputs": {"input": "synthetic demo todo"}},
-    "reply": "{\"ok\":true,\"id\":1,\"title\":\"synthetic demo todo [proofloop-r1-20260702]\"}",
-    "verdict": "FAIL",
-    "evidence": [
-      "api_state: []",
-      "server_log: [2026-07-02T14:56:18.778Z] POST /todos LIED ok for \"synthetic demo todo [proofloop-r1-20260702]\" (nothing persisted)"
-    ],
-    "reason": "The API replied 201 ok but the tagged todo never appeared in the read API within the settle budget, and the server log records nothing was persisted."
-  }],
-  "cleanup": "clean"
-}
-```
-
-Restarted without `LIE_MODE`, same prompt, run 2: the stimulus reply was **byte-for-byte identical** — and the verdict flipped to `PASS` on the evidence (`api_state` shows the tagged todo, `server_log` shows the persist). That delta — reply unchanged, verdict flipped — is the whole point.
-
-## Install
-
-```
+```text
 /plugin marketplace add tristanmuzzu/proofloop
 /plugin install proofloop@proofloop
 ```
 
-Then copy `verify.example.yaml` to your repo root as `verify.yaml` and adapt the three vocabularies to your stack (Postgres, REST, message queues, log files — anything you can reach from a shell command). The execution contract (cwd, run_id rules, placeholder escaping) is documented in the skill and the example file.
+Copy and adapt the examples:
 
-## Safety by design
-
-- Every test entity carries a run tag; a baseline read before each stimulus makes "never touch entities you didn't create" checkable, not aspirational.
-- Only stimuli declared in `verify.yaml` are ever fired, and declared commands are never edited beyond placeholder substitution — a broken command is reported as a config defect, not quietly fixed.
-- Placeholder values are restricted to `[a-zA-Z0-9 _.-]+` — no shell-escaping games against your own harness.
-- Destructive/irreversible stimuli require explicit user confirmation.
-- Works against real production systems when your evidence surfaces are read-only and your stimuli are user-grade actions — that's the environment the pattern was developed in.
-
-## The eyes: browser + vision evidence (v0.4)
-
-A web UI is just another evidence surface. `bin/proofloop-browser.mjs` (playwright-core + your system Chrome — no browser download) captures **text truth** (full page text, greppable by the runner's checks and settle-polling) and **pixel truth** (a full-page screenshot listed in the run record's `artifacts` for a vision-capable judge).
-
-The demo server's second lie mode shows why this surface earns its keep. With `STALE_UI=1`, the API and the data are completely honest — but the web page renders a snapshot frozen at boot:
-
-```
-STALE-UI RUN:  settled: true  |  api_state: found  |  ui_state: NOT found
+```bash
+cp verify.example.yaml verify.yaml
+cp proofloop.contract.example.json proofloop.contract.json
 ```
 
-Reply said ok. The API shows the todo. The user stares at "0 todo(s)". Every log-based verification on earth passes this deploy; the screenshot fails it in one glance. Pixel-judging rules (when pixels are primary evidence vs. when they must be paired with a state surface) are in the skill.
+Freeze the contract **before changing its implementation paths**:
 
-## The brain: scout mode (v0.5)
+```bash
+node bin/proofloop-contract.mjs validate-contract \
+  --contract proofloop.contract.json --worktree .
 
-The runner answers "did it really happen?" — **scout answers "what should we even test?"** Given a deployed diff, the `proofloop-scout` skill classifies every hunk by shape (new endpoint, new field in a write path, changed branch, bug fix, removed behavior…), derives one-sentence observable claims from a claim-template table, discovers stimuli and evidence surfaces from the repo itself (log lines *added in the diff* are gift-wrapped evidence needles), runs a gap analysis against your existing `verify.yaml`, and emits paste-ready config proposals plus scenario files — each proposed stimulus labeled with its blast radius.
-
-Scout is **read-only by contract**: it never fires a stimulus. The human reviews and accepts; the runner executes; a fresh judge rules. Dogfooded on this repo: a diff adding `createdAt` to the demo's write path was scouted into a scenario (`examples/todo-api/scenario-createdat-exposed.json`) that the runner then verified green against the live server — diff to verified claim, no hand-written test.
-
-## The loop: autonomous build-verify (v1.0)
-
-`proofloop-build` turns "build feature X" into "feature X is deployed and proven": **claims before code** (scout on the intent), then build → deploy → scout the real diff → runner → fresh judge, iterating on the verdict's evidence quotes until `allPassed: true` or genuinely blocked. Hard anti-self-deception rules: never weaken a claim to make it pass; iteration cap 5; stop on repeated identical evidence (a non-converging loop has a wrong diagnosis, not insufficient effort); previously-green claims re-run every round; every iteration sweeps its tags. The exit condition is a verdict from reality, not the builder's satisfaction.
-
-## The gym: calibration as CI (v1.0)
-
-`gym/run-gym.mjs` starts the demo server as each of its four liars (reply-liar, log-liar, partial-persist, stale-UI) plus honest modes, runs the matching scenarios through the runner, and asserts the mechanical facts show **exactly** the signature each failure class must produce — including the nastiest case, the log-liar, where the log check passes while state fails. Any proofloop change must leave the gym clean:
-
-```
-node gym/run-gym.mjs
-...
-GYM CLEAN: every liar caught, honest servers pass.
+node bin/proofloop-contract.mjs init \
+  --contract proofloop.contract.json --worktree . \
+  --state .proofloop/state.json --base-ref HEAD
 ```
 
-Trust in a verifier shouldn't come from months of anecdotes; here it's a test suite.
+Record the build and exact deployment:
 
-## Status and roadmap
+```bash
+node bin/proofloop-contract.mjs transition \
+  --state .proofloop/state.json --phase local_green
 
-v1.0 — runner (v0.3), browser/vision evidence (v0.4), scout (v0.5), build loop + gym (v1.0). Every component was verified live before its release, and the development of v1.0 itself ran as a proofloop-build loop: iteration 1 caught a real YAML-parser bug via a failing stimulus lookup; iteration 2 went green; the gym then passed as the regression floor. Next: adapter recipes for real stacks (Postgres, Telegram bots, queues), more gym residents, and war stories. The mechanical half is now owned by a **zero-dependency runner CLI** (`bin/proofloop-runner.mjs`): charset-enforced substitution, liveness probe, baseline reads with debris/collision abort, stimulus execution, outcome-polling against evidence (not blind sleeps), verbatim evidence capture, mechanical contains/absent checks with quoted matching lines, and cleanup with a verified sweep — all recorded to `.proofloop/runs/<run_id>/record.json`. The model writes the scenario and judges the record; code does everything models fumble. The runner never judges — by design.
+node bin/proofloop-contract.mjs transition \
+  --state .proofloop/state.json --phase deployed \
+  --deployed-ref <exact-revision>
 
-Both the runner and the earlier prompt-orchestrated loop have been dogfooded end-to-end against the demo in both modes (the verdicts above are captured, not typed). The runner's first live run immediately demonstrated why judges must read `matching_lines` rather than trust `found` booleans: the needle `"persisted"` substring-matched the liar's own `"(nothing persisted)"` log line.
+node bin/proofloop-contract.mjs transition \
+  --state .proofloop/state.json --phase verifying \
+  --run-id <fresh-run-id>
+```
 
-Roadmap: a scout mode that derives claims and proposes verify.yaml entries from the deployed diff, and a "liar's gym" — a regression suite of deliberately deceptive demo servers (the two current lie modes are its first two residents) that every proofloop change must still catch. Adapter recipes for common stacks (Postgres, Telegram bots, queues) are the other obvious contribution surface.
+Run every frozen scenario:
+
+```bash
+node bin/proofloop-runner.mjs run \
+  --state .proofloop/state.json --scenario-id <frozen-scenario-id>
+```
+
+The runner writes each scenario's verbatim artifacts to `.proofloop/runs/<run_id>/<scenario_id>/`. A fresh-context judge reads those records and creates one report covering every scenario and required observation. Then validate and accept it:
+
+```bash
+node bin/proofloop-contract.mjs validate-report \
+  --state .proofloop/state.json --report .proofloop/report.json
+
+node bin/proofloop-contract.mjs transition \
+  --state .proofloop/state.json --phase passed \
+  --report .proofloop/report.json
+```
+
+The contract CLI rejects changed contracts/config, illegal phase transitions, reused run IDs, omitted scenarios, incomplete evidence, and dishonest success summaries.
+
+## Watch it catch a liar
+
+The demo todo API has deliberate failure modes. In `LIE_MODE`, it returns a successful create reply without storing anything. Proofloop captures the mismatch:
+
+```text
+reply:       {"ok":true,"id":1,...}
+api_state:   no tagged todo
+server_log:  POST /todos LIED ... (nothing persisted)
+verdict:     FAIL
+```
+
+Restart the same server honestly and the reply can remain byte-for-byte identical while the verdict flips to PASS because independent API state and the persistence log now agree. That is the point: reply unchanged, reality changed, verdict changed.
+
+## Browser evidence
+
+`bin/proofloop-browser.mjs` captures page text and a full-page screenshot using the installed Chrome or Edge. UI evidence can prove presentation claims directly. Persistence claims should pair it with state evidence because a UI can render stale data in either direction.
+
+The demo includes `STALE_UI`: state and API are honest while the page remains frozen at boot. Proofloop sees `api_state: found` plus `ui_state: not found`, and the screenshot shows what the user actually sees.
+
+## Safety properties
+
+- Baseline reads abort before mutation when a run tag already exists.
+- Only stimuli declared in `verify.yaml` are executed.
+- Placeholder values are limited to `[A-Za-z0-9 _.-]+`.
+- Cleanup is tag-scoped and followed by a verification read.
+- Destructive or irreversible stimuli require explicit human approval.
+- Contract paths are confined to the worktree.
+- The reply is stored separately from evidence.
+- Missing or ambiguous evidence cannot produce PASS.
+
+## Calibration gym
+
+The liar's gym starts the demo in honest and deliberately deceptive modes: reply-liar, log-liar, partial-persist, and stale-UI. It asserts the exact evidence signature expected from each:
+
+```bash
+npm test
+npm run gym
+```
+
+Any Proofloop change should leave both the contract tests and gym clean.
+
+## Architecture
+
+- `bin/proofloop-contract.mjs` owns proof policy: contract schema, digest, workflow transitions, and report validation.
+- `bin/proofloop-runner.mjs` is mechanical: execute declared operations and record facts; never judge.
+- `skills/proofloop-scout` discovers surfaces and drafts contracts without touching live systems.
+- `agents/proofloop-verifier.md` defines the stateless evidence judge.
+- `gym/run-gym.mjs` guards against verifier regressions.
+
+The public project is generic and contains no private deployment adapters, customer data, credentials, or environment coordinates.
 
 ## Origin
 
-Generalized (clean-room) from a private verification harness that gates deploys of a production LLM assistant: every shipped feature is verified by live scenario execution with database/API/log evidence audits before it's called done. The pattern also matches Anthropic's official Claude Fable 5 guidance: *separate, fresh-context verifier subagents outperform self-critique.*
+Generalized from a private live-verification harness used to gate production changes. The transferable idea is simple: decide what evidence will prove the change before building it, then let a fresh judge compare the deployed system with that frozen contract.
 
-MIT. PRs welcome — adapters, evidence-source recipes, and war stories especially.
+MIT. Contributions are welcome, especially evidence adapters, new liar-gym residents, and real-world verification writeups.

@@ -1,0 +1,69 @@
+{
+  "schemaVersion": "1.0",
+  "contractId": "PROOFLOOP_VERIFY_WIDGET_CREATION",
+  "createdAt": "2026-07-15T00:00:00.000Z",
+  "createdBeforeImplementation": true,
+  "changeIntent": "Create widgets durably while preserving duplicate rejection.",
+  "config": "verify.yaml",
+  "implementationPaths": ["src/widgets"],
+  "declaredSurface": ["POST /widgets"],
+  "preservedBehavior": ["Duplicate widget names remain rejected without a second row."],
+  "scenarios": [
+    {
+      "id": "create-widget",
+      "kind": "happy_path",
+      "description": "A valid widget is returned and independently observable.",
+      "surface": "POST /widgets",
+      "claim": "A successful create reply corresponds to one persisted widget.",
+      "preconditions": ["The service is healthy.", "The fresh run tag is absent from widget state."],
+      "stimulus": {"name": "create_widget", "inputs": {}},
+      "settle": {"evidence": "widget_state", "expect": "{tag}"},
+      "checks": [
+        {
+          "id": "widget-persisted",
+          "type": "expect",
+          "evidence": "widget_state",
+          "contains": "{tag}",
+          "oracle": "An independent read exposes the uniquely tagged widget.",
+          "required": true
+        },
+        {
+          "id": "widget-not-rejected",
+          "type": "absent",
+          "evidence": "service_log",
+          "contains": "rejected {tag}",
+          "oracle": "The valid create did not take the rejection path.",
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "reject-duplicate",
+      "kind": "preservation",
+      "description": "A duplicate create is rejected without another persisted widget.",
+      "surface": "POST /widgets",
+      "claim": "Submitting the same tagged name twice leaves exactly one widget.",
+      "preconditions": ["One widget bearing the fresh run tag was created by this scenario."],
+      "stimulus": {"name": "create_duplicate_widget", "inputs": {}},
+      "settle": null,
+      "checks": [
+        {
+          "id": "duplicate-rejected",
+          "type": "expect",
+          "evidence": "service_log",
+          "contains": "duplicate {tag}",
+          "oracle": "The duplicate-specific branch is recorded.",
+          "required": true
+        },
+        {
+          "id": "duplicate-not-persisted",
+          "type": "absent",
+          "evidence": "widget_duplicates",
+          "contains": "count 2",
+          "oracle": "The tagged state query does not observe a second row.",
+          "required": true
+        }
+      ]
+    }
+  ]
+}
